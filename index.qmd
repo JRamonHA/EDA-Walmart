@@ -4,14 +4,10 @@ format:
   html:
     toc: true
     toc-title: Contenido
+    number-sections: true
     code-tools: true
     smooth-scroll: true
 ---
-
-```{python}
-#| echo: false
-import pandas as pd
-```
 
 # Introducción
 
@@ -23,31 +19,157 @@ En total, el conjunto de datos incluye 3,049 productos individuales, distribuido
 
 Los datos se presentan en tres archivos separados:
 
-- `sales_train.csv`: Son los datos  principales. Contienen una columna para cada uno de los 1941 días desde el **29/01/2011** hasta el **22/05/2016**; sin incluir el período de validación de 28 días hasta el **19/06/2016**. También incluye los ID de artículo, departamento, categoría, tienda y estado. El número de filas es 30,490 para todas las combinaciones de 30490 productos y 10 tiendas.
+- `sales_train.csv`: Son los datos  principales. Contienen una columna para cada uno de los 1941 días desde el **29/01/2011** hasta el **22/05/2016**; sin incluir el período de validación de 28 días hasta el **19/06/2016**. También incluye los ID de artículo, departamento, categoría, tienda y estado.
 
 - `calendar.csv`: Contiene las fechas en las que se venden los productos junto con características relacionadas como día de la semana, mes, año y 3 indicadores binarios que indican si las tiendas en cada estado permitían compras con cupones de alimentos SNAP en esta fecha (1) o no (0).
 
 - `sell_prices.csv`: Contiene información sobre los productos vendidos (ID de tienda, artículo, fecha y precio de venta). 
 
-```{python}
-#| eval: false
-#| code-fold: true
-print('Hola mundo')
-```
-
-```{python}
-#| echo: false
-print('Hola mundo')
-```
+# Preparación
 
 ::: {.panel-tabset}
 
-### Tab A
+## Cargar librerias
 
-Content for `Tab A`
+Carga de módulos para la manipulación de datos y visualización interactiva.
 
-### Tab B
+```{python}
+#| code-fold: true
 
-Content for `Tab B`
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import seaborn as sns
+import matplotlib.pyplot as plt
+```
+
+## Cargar datos
+
+Carga de los datos utilizando `pandas`. Los archivos originales en formato `.csv` han sido previamente convertidos a `.parquet` para optimizar el uso de memoria y espacio en disco, mejorando la eficiencia en el manejo de grandes volúmenes de datos.
+
+```{python}
+#| code-fold: true
+
+calendar = pd.read_parquet('data/calendar.parquet')
+train = pd.read_parquet('data/sales_train.parquet')
+prices = pd.read_parquet('data/sell_prices.parquet')
+sample_submit = pd.read_parquet('data/sample_submission.parquet')
+```
+
+:::
+
+# Estructura y contenido de los datos
+
+Como primer paso, es recomendable echar un vistazo rápido a los conjuntos de datos.
+
+::: {.panel-tabset}
+
+## Ventas
+
+Aquí están las primeras 10 filas de los datos de ventas:
+```{python}
+#| code-fold: true
+
+train.head(10)
+```
+
+Se infiere que:
+
+- Hay una columna para cada ID de artículo, departamento, categoría, tienda y estado; además de un ID general que combina los demás ID y una marca de validación.
+
+- Las ventas por fecha se codifican como columnas que comienzan con el prefijo d_. Estas indican el número de unidades vendidas por día (no el total de dólares).
+
+- Hay bastantes valores cero.
+
+Este conjunto de datos tiene demasiadas columnas y filas para mostrarlas todas:
+
+```{python}
+#| code-fold: true
+
+train.shape
+```
+
+## Precios
+
+Este conjunto de datos da los cambios de precio semanales por artículo:
+
+```{python}
+#| code-fold: true
+
+prices.head(10)
+```
+
+```{python}
+#| code-fold: true
+
+# Desactivar notación científica
+pd.options.display.float_format = '{:.2f}'.format
+
+prices.describe(include='all')
+```
+
+Resultados:
+
+- Los precios varían desde $0.10 hasta poco más de $100.
+
+## Calendario
+
+Los datos del calendario brindan características de fecha, como día de la semana, mes o año; junto con 2 características de eventos diferentes y una columna de cupones de alimentos SNAP:
+
+```{python}
+#| code-fold: true
+
+calendar.head(10)
+```
+
+```{python}
+#| code-fold: true
+
+calendar.info()
+```
+
+```{python}
+#| code-fold: true
+
+calendar.describe(include='all')
+```
+
+Se obtiene que:
+
+- El calendario contiene todas las fechas, días de la semana y meses relevantes, además de indicadores binarios.
+- Solo hay 5 filas no NA en la columna event_name_2; es decir, solo 5 (de 1969) instancias con más de un evento en un día determinado.
+
+## Valores faltantes y ceros
+
+```{python}
+#| code-fold: true
+
+train.isna().sum()
+```
+
+```{python}
+#| code-fold: true
+
+from matplotlib.ticker import PercentFormatter
+
+df = train.loc[:, ~train.columns.str.contains('id')]
+df = df.replace(0, np.nan)
+df_na = df.isna().copy()
+df_na['sum'] = df_na.sum(axis=1)
+df_na['mean'] = df_na['sum'] / df_na.shape[1]
+bar = df_na[['sum', 'mean']]
+
+plt.figure(figsize=(8, 6))
+sns.kdeplot(bar['mean'], fill=True, color='blue')
+plt.gca().xaxis.set_major_formatter(PercentFormatter(1))  # eje x como %
+plt.xlim(0, 1)
+plt.gca().set_yticklabels([])
+plt.title("Densidad del porcentaje de valores cero - todas las series temporales")
+plt.xlabel("")
+plt.ylabel("")
+plt.tight_layout()
+plt.show()
+```
+Esto significa que solo una minoría de las series temporales tienen menos del 50% de valores cero. El pico está bastante cerca del 100%.
 
 :::

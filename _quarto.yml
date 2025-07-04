@@ -10,3 +10,6 @@ date: "07/02/2025"
 lang: es
 language:
   title-block-author-single: "Autor"
+
+website: 
+  favicon: data/walmart.ico
