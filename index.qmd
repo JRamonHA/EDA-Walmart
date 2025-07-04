@@ -1,3 +1,13 @@
+---
+title: "EDA Walmart"
+format:
+  html:
+    toc: true
+    toc-title: Contenido
+    code-tools: true
+    smooth-scroll: true
+---
+
 ```{python}
 #| echo: false
 import pandas as pd

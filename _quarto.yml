@@ -2,8 +2,6 @@ project:
   type: website
   output-dir: docs
 
-title: "EDA Walmart"
-
 author: 
     name: "José Ramón Hernández Aguilar"
     email: hdezagjr@gmail.com
@@ -12,10 +10,3 @@ date: "07/02/2025"
 lang: es
 language:
   title-block-author-single: "Autor"
-
-format:
-  html:
-    toc: true
-    toc-title: Contenido
-    code-tools: true
-    smooth-scroll: true
