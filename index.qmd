@@ -13,13 +13,13 @@ format:
 
 El presente análisis exploratorio de datos (EDA) tiene como objetivo comprender la estructura, la calidad y las principales características de los datos históricos de ventas de Walmart. Se busca describir cómo están organizados los datos, su naturaleza jerárquica, e identificar patrones, valores atípicos y posibles inconsistencias que puedan afectar su análisis.
 
-El conjunto de datos está compuesto por 42,840 series temporales jerárquicas, correspondientes a registros de ventas a lo largo del tiempo organizados en distintos niveles. Los datos provienen de tres estados de Estados Unidos: California (CA), Texas (TX) y Wisconsin (WI). La naturaleza jerárquica de los datos permite su agregación a diferentes niveles, como producto, departamento, categoría o estado. El período cubierto por las ventas abarca desde enero de 2011 hasta junio de 2016, e incluye también información sobre precios, promociones y días festivos. Cabe señalar que un alto porcentaje de las series presenta periodos con valores de ventas iguales a cero.
+El conjunto de datos está compuesto por 42,840 series temporales jerárquicas, correspondientes a registros de ventas a lo largo del tiempo organizados en distintos niveles. Los datos provienen de tres estados de Estados Unidos: California (CA), Texas (TX) y Wisconsin (WI). La naturaleza jerárquica de los datos permite su agregación a diferentes niveles, como producto, departamento, categoría o estado. El período cubierto por las ventas abarca desde enero de 2011 hasta abril de 2016, e incluye también información sobre precios, promociones y días festivos. Cabe señalar que un alto porcentaje de las series presenta periodos con valores de ventas iguales a cero.
 
-En total, el conjunto de datos incluye 3,049 productos individuales, distribuidos en 3 categorías, 7 departamentos y vendidos en 10 tiendas ubicadas en los tres estados mencionados. La organización jerárquica permite generar distintas agregaciones, por ejemplo, una única serie con todas las ventas, tres series agregadas por estado, o series más específicas por combinación de producto y tienda. En su nivel más desagregado, las ventas de los 3,049 productos en las 10 tiendas conforman 30,490 series temporales individuales.
+En total, el conjunto de datos incluye 3,049 productos individuales, distribuidos en 3 categorías, 7 departamentos y vendidos en 10 tiendas ubicadas en los tres estados mencionados.
 
 Los datos se presentan en tres archivos separados:
 
-- `sales_train.csv`: Son los datos  principales. Contienen una columna para cada uno de los 1941 días desde el **29/01/2011** hasta el **22/05/2016**; sin incluir el período de validación de 28 días hasta el **19/06/2016**. También incluye los ID de artículo, departamento, categoría, tienda y estado.
+- `sales_train.csv`: Son los datos  principales. Contienen una columna para cada uno de los 1913 días desde el **29/01/2011** hasta el **25/04/2016**. También incluye los ID de artículo, departamento, categoría, tienda y estado.
 
 - `calendar.csv`: Contiene las fechas en las que se venden los productos junto con características relacionadas como día de la semana, mes, año y 3 indicadores binarios que indican si las tiendas en cada estado permitían compras con cupones de alimentos SNAP en esta fecha (1) o no (0).
 
@@ -36,11 +36,12 @@ Carga de módulos para la manipulación de datos y visualización interactiva.
 ```{python}
 #| code-fold: true
 
-import pandas as pd
 import numpy as np
-import plotly.express as px
-import seaborn as sns
+import pandas as pd
+from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
 ```
 
 ## Cargar datos
@@ -102,7 +103,7 @@ prices.head(10)
 ```{python}
 #| code-fold: true
 
-# Desactivar notación científica
+# desactivar notación científica
 pd.options.display.float_format = '{:.2f}'.format
 
 prices.describe(include='all')
@@ -170,6 +171,290 @@ plt.ylabel("")
 plt.tight_layout()
 plt.show()
 ```
+
 Esto significa que solo una minoría de las series temporales tienen menos del 50% de valores cero. El pico está bastante cerca del 100%.
 
 :::
+
+# Resumen visual: Gráficos interactivos de series temporales
+
+Se realizará una exploración visual para analizar varios gráficos de series temporales en diferentes niveles de agregación empleando funciones auxiliares: `cols_d` identifica las columnas cuyo nombre comienza con “d_”, `extract_ts` transforma el dataframe ancho en formato largo asignando a cada valor de ventas su fecha real a partir de `MIN_DATE` y normaliza los identificadores eliminando sufijos, `agg_wide` agrupa y suma las columnas de días según las dimensiones indicadas renombrando la última agrupación como `id`, y `set_monthly` utiliza estas transformaciones para agregar ventas por año y mes, conservar solo el primer día de cada periodo y descartar el último mes incompleto, dejando así listo el dataset para crear gráficos temporales interactivos.
+
+```{python}
+#| code-fold: true
+
+# constante para fecha mínima
+MIN_DATE = datetime(2011, 1, 29)
+
+def cols_d(df):
+    """Devuelve las columnas cuya etiqueta empieza con 'd_'"""
+    return [c for c in df.columns if c.startswith('d_')]
+
+def extract_ts(df):
+    """
+    Convierte un dataframe ancho (columnas d_1, d_2, …) en formato largo con columnas:
+      - id: identificador de la serie (sin sufijo "_validation")
+      - dates: fecha real
+      - sales: valor de ventas
+    """
+    df = df.copy()
+    # conservar id y columnas de días
+    df = df[['id'] + cols_d(df)]
+    # pivot largo
+    ts = df.melt(id_vars=['id'], var_name='day', value_name='sales')
+    # convertir índice de día en entero
+    ts['day'] = ts['day'].str.removeprefix('d_').astype(int)
+    # calcular fecha real
+    ts['dates'] = ts['day'].apply(lambda x: MIN_DATE + timedelta(days=x - 1))
+    ts.drop(columns='day', inplace=True)
+    # limpiar sufijo
+    ts['id'] = ts['id'].astype(str).str.replace('_validation', '')
+    return ts
+
+def agg_wide(df, group_cols):
+    """
+    Agrega un dataframe ancho sumando las columnas d_* según group_cols,
+    renombrando la última columna de agrupación como 'id'.
+    """
+    agg = (
+        df
+        .groupby(group_cols)[cols_d(df)]
+        .sum()
+        .reset_index()
+    )
+    agg = agg.rename(columns={group_cols[-1]: 'id'})
+    return agg
+
+def set_monthly(df):
+    """
+    Toma un dataframe ancho con columna 'id', transforma a largo,
+    agrega por año y mes, filtra sólo primer día y elimina mes incompleto.
+    """
+    ts = extract_ts(df)
+    ts['month'] = ts['dates'].dt.month
+    ts['year'] = ts['dates'].dt.year
+    monthly = (
+        ts
+        .groupby(['year', 'month', 'id'], as_index=False)
+        .agg(
+            sales=('sales', 'sum'),
+            dates=('dates', 'min')
+        )
+    )
+    monthly = monthly[monthly['dates'].dt.day == 1]
+    last = monthly['dates'].max()
+    monthly = monthly[monthly['dates'] != last]
+    return monthly
+```
+
+## Todas las ventas agregadas
+
+En primer lugar, se presenta la serie temporal agregada de todos los artículos, tiendas, categorías, departamentos y ventas.
+
+```{python}
+#| code-fold: true
+
+# ventas totales agregadas
+agg = train.sum().to_frame('sales').T
+agg['id'] = 'total'
+ts_agg = extract_ts(agg)
+
+fig = px.line(
+    ts_agg,
+    x='dates',
+    y='sales',
+    title='Ventas agregadas',
+    labels={'dates': 'Fecha', 'sales': 'Ventas'}
+)
+fig.update_layout(template='plotly_white')
+fig.show()
+```
+
+Se observa lo siguiente:
+
+- En general, las ventas van en aumento, lo que parece positivo para Walmart. Se nota un patrón anual claro, con una caída en Navidad, el único día en que las tiendas permanecen cerradas.
+
+- Las ventas más recientes de 2016 muestran un crecimiento algo más rápido que en los años anteriores.
+
+## Ventas por estado
+
+Ahora, se analizarán las ventas por estado a nivel de agregación mensual.
+
+```{python}
+#| code-fold: true
+
+# ventas mensuales por estado
+stt = agg_wide(train, ['state_id'])
+ts_stt = set_monthly(stt)
+
+fig = px.line(
+    ts_stt,
+    x='dates',
+    y='sales',
+    color='id',
+    title='Ventas mensuales por estado',
+    labels={'dates': 'Fecha', 'sales': 'Ventas', 'id': 'Estado'}
+)
+fig.update_layout(template='plotly_white')
+fig.show()
+```
+
+Se observa lo siguiente:
+
+- California (CA) registra la mayor cantidad de artículos vendidos en general, mientras que Wisconsin (WI) fue acercándose gradualmente a Texas (TX) hasta superarlo en los últimos meses de los datos de entrenamiento.
+
+- CA presentó caídas marcadas en 2013 y 2015, las cuales también se perciben en los demás estados, aunque con menor intensidad. Estos descensos y picos no ocurren de manera constante (por ejemplo, no se aprecian en 2012), pero podrían reflejar principalmente el patrón anual previamente identificado.
+
+## Ventas por categoría y tienda
+
+El conjunto de datos incluye 10 tiendas: 4 en California, 3 en Texas y 3 en Wisconsin, así como 3 categorías: `FOODS` (alimentos), `HOBBIES` (pasatiempos) y `HOUSEHOLD` (hogar). Se utilizarán niveles de agregación mensuales para mantener las gráficas claras.
+
+::: {.panel-tabset}
+
+### Categoría: Serie de tiempo
+
+```{python}
+#| code-fold: true
+
+# ventas mensuales por categoría
+cat = agg_wide(train, ['cat_id'])
+cat_monthly = set_monthly(cat)
+
+fig = px.line(
+    cat_monthly,
+    x='dates',
+    y='sales',
+    color='id',
+    title='Ventas por categoría',
+    labels={'dates': 'Fecha', 'sales': 'Ventas', 'id': 'Categoría'}
+)
+fig.update_layout(template='plotly_white')
+fig.show()
+```
+
+### Categoría: Conteo
+
+```{python}
+#| code-fold: true
+
+# conteo de ventas por categoría
+counts = train['cat_id'].value_counts().reset_index()
+counts.columns = ['id','n']
+
+fig = px.bar(
+    counts,
+    x='id',
+    y='n',
+    color='id',
+    title='Ventas por categoría',
+    labels={'id': 'Categoría', 'n': 'Conteo'}
+)
+fig.update_layout(template='plotly_white')
+fig.update_xaxes(tickfont=dict(size=7))
+fig.show()
+```
+
+### Tienda: Serie de tiempo por estado 
+
+```{python}
+#| code-fold: true
+
+sto = agg_wide(train, ['store_id'])
+store_monthly = set_monthly(sto)
+# extraer estado de la id de tienda
+store_monthly['state_id'] = store_monthly['id'].str.slice(0, 2)
+
+fig = px.line(
+    store_monthly,
+    x='dates',
+    y='sales',
+    color='id',
+    facet_col='state_id',
+    facet_col_wrap=3,
+    title='Ventas por tienda',
+    labels={'dates': 'Fecha', 'sales': 'Ventas', 'id': 'Tienda', 'state_id': 'Estado'}
+)
+fig.update_layout(
+    template='plotly_white',
+    legend_title_text='Tienda',
+    legend_orientation='h',
+    legend_y=-0.2
+)
+fig.update_xaxes(title=None)
+fig.show()
+```
+:::
+
+Se observa lo siguiente:
+
+- La categoría `FOODS` es la más frecuente, seguida de `HOUSEHOLD`, que se encuentra claramente por encima de `HOBBIES`. El número de registros de `HOUSEHOLD` se aproxima más al de `FOODS` que las cifras de ventas correspondientes, lo que sugiere que se venden más unidades de `FOODS` que de `HOUSEHOLD`.
+
+- En cuanto a las tiendas, las ubicadas en Texas muestran ventas bastante similares entre sí; `TX_3` pasa de niveles comparables a `TX_1` hasta alcanzar los de `TX_2` a lo largo del período analizado. Las tiendas de Wisconsin `WI_1` y `WI_2` presentan un notable aumento en las ventas en 2012, mientras que `WI_3` muestra una caída sostenida durante varios años.
+
+- Las tiendas de California exhiben un volumen de ventas relativamente uniforme. Destaca `CA_2`, que desciende al nivel de `CA_4` en 2015 y posteriormente se recupera, alcanzando las ventas de `CA_1` hacia finales del año.
+
+## Ventas por departamento
+
+Los datos incluyen 7 departamentos: 3 en la categoría `FOODS` y 2 en cada una de las categorías `HOBBIES` y `HOUSEHOLD`. Junto con los 3 estados, estos niveles suman un total de 21 combinaciones.
+
+```{python}
+#| code-fold: true
+
+# ventas mensuales por departamento y estado
+dept = (
+    train
+    .groupby(['dept_id', 'state_id'])[cols_d(train)]
+    .sum()
+    .reset_index()
+)
+
+df_dept = dept[['dept_id', 'state_id'] + cols_d(dept)]
+ts_dept = df_dept.melt(id_vars=['dept_id', 'state_id'], var_name='day', value_name='sales')
+
+ts_dept['day'] = ts_dept['day'].str.removeprefix('d_').astype(int)
+ts_dept['dates'] = ts_dept['day'].apply(lambda d: MIN_DATE + timedelta(days=d - 1))
+# agregar mes/año
+ts_dept['month'] = ts_dept['dates'].dt.month
+ts_dept['year'] = ts_dept['dates'].dt.year
+
+dept_monthly = (
+    ts_dept
+    .groupby(['year', 'month', 'dept_id', 'state_id'], as_index=False)
+    .agg(
+        sales=('sales', 'sum'),
+        dates=('dates', 'min')
+    )
+)
+# filtrar primer día y quitar mes incompleto
+dept_monthly = dept_monthly[dept_monthly['dates'].dt.day == 1]
+last = dept_monthly['dates'].max()
+dept_monthly = dept_monthly[dept_monthly['dates'] != last]
+
+# gráfica por depto y estado
+fig = px.line(
+    dept_monthly,
+    x='dates',
+    y='sales',
+    color='dept_id',
+    facet_row='state_id',
+    facet_col='dept_id',
+    title='Ventas por departamento y estado',
+    labels={
+        'dates': 'Fecha',
+        'sales': 'Ventas',
+        'dept_id': 'Depto',
+        'state_id': 'Estado'
+    }
+)
+fig.update_layout(template='plotly_white', showlegend=False)
+fig.update_annotations(font_size=8)
+fig.update_xaxes(title=None)
+fig.update_yaxes(title=None)
+fig.show()
+```
+
+Se observa lo siguiente:
+
+- `FOODS_3` concentra claramente la mayor parte de las ventas dentro de la categoría `FOODS` en todos los estados. `FOODS_2` muestra un ligero incremento hacia el final del período, especialmente en Wisconsin.
+
+- De manera similar, `HOUSEHOLD_1` supera con claridad a `HOUSEHOLD_2` en volumen de ventas. Por su parte, `HOBBIES_1` mantiene un nivel promedio de ventas superior al de `HOBBIES_2`, aunque en ambos casos no se aprecia un cambio significativo a lo largo del tiempo.
