@@ -13,9 +13,9 @@ format:
 
 El presente análisis exploratorio de datos (EDA) tiene como objetivo comprender la estructura, la calidad y las principales características de los datos históricos de ventas de Walmart. Se busca describir cómo están organizados los datos, su naturaleza jerárquica, e identificar patrones, valores atípicos y posibles inconsistencias que puedan afectar su análisis.
 
-El conjunto de datos está compuesto por 42,840 series temporales jerárquicas, correspondientes a registros de ventas a lo largo del tiempo organizados en distintos niveles. Los datos provienen de tres estados de Estados Unidos: California (CA), Texas (TX) y Wisconsin (WI). La naturaleza jerárquica de los datos permite su agregación a diferentes niveles, como producto, departamento, categoría o estado. El período cubierto por las ventas abarca desde enero de 2011 hasta abril de 2016, e incluye también información sobre precios, promociones y días festivos. Cabe señalar que un alto porcentaje de las series presenta periodos con valores de ventas iguales a cero.
+El conjunto de datos está compuesto por 42,840 series temporales jerárquicas, correspondientes a registros de ventas a lo largo del tiempo organizados en distintos niveles. Los datos provienen de tres estados de Estados Unidos: **California (CA)**, **Texas (TX)** y **Wisconsin (WI)**. La naturaleza jerárquica de los datos permite su agregación a diferentes niveles, como producto, departamento, categoría o estado. El período cubierto por las ventas abarca desde enero de 2011 hasta abril de 2016, e incluye también información sobre precios, promociones y días festivos. Cabe señalar que un alto porcentaje de las series presenta periodos con valores de ventas iguales a cero.
 
-En total, el conjunto de datos incluye 3,049 productos individuales, distribuidos en 3 categorías, 7 departamentos y vendidos en 10 tiendas ubicadas en los tres estados mencionados.
+En total, el conjunto de datos incluye 3,049 productos individuales, distribuidos en **3 categorías**, **7 departamentos** y **10 tiendas** ubicadas en los tres estados mencionados.
 
 Los datos se presentan en tres archivos separados:
 
