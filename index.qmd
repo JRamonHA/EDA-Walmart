@@ -9,13 +9,14 @@ format:
     smooth-scroll: true
 ---
 
-# Introducción
+# Introducción {#sec-introduccion}
 
 El presente análisis exploratorio de datos (EDA) tiene como objetivo comprender la estructura, la calidad y las principales características de los datos históricos de ventas de Walmart. Se busca describir cómo están organizados los datos, su naturaleza jerárquica, e identificar patrones, valores atípicos y posibles inconsistencias que puedan afectar su análisis.
 
 El conjunto de datos está compuesto por 42,840 series temporales jerárquicas, correspondientes a registros de ventas a lo largo del tiempo organizados en distintos niveles. Los datos provienen de tres estados de Estados Unidos: **California (CA)**, **Texas (TX)** y **Wisconsin (WI)**. La naturaleza jerárquica de los datos permite su agregación a diferentes niveles, como producto, departamento, categoría o estado. El período cubierto por las ventas abarca desde enero de 2011 hasta abril de 2016, e incluye también información sobre precios, promociones y días festivos. Cabe señalar que un alto porcentaje de las series presenta periodos con valores de ventas iguales a cero.
 
-En total, el conjunto de datos incluye 3,049 productos individuales, distribuidos en **3 categorías**, **7 departamentos** y **10 tiendas** ubicadas en los tres estados mencionados.
+En total, el conjunto de datos incluye 3,049 productos individuales, distribuidos en **3 categorías**, **7 departamentos** y **
+** ubicadas en los tres estados mencionados.
 
 Los datos se presentan en tres archivos separados:
 
@@ -25,7 +26,7 @@ Los datos se presentan en tres archivos separados:
 
 - `sell_prices.csv`: Contiene información sobre los productos vendidos (ID de tienda, artículo, fecha y precio de venta). 
 
-# Preparación
+# Preparación {#sec-preparacion}
 
 ::: {.panel-tabset}
 
@@ -59,7 +60,7 @@ sample_submit = pd.read_parquet('data/sample_submission.parquet')
 
 :::
 
-# Estructura y contenido de los datos
+# Estructura y contenido de los datos {#sec-contenido}
 
 Como primer paso, es recomendable echar un vistazo rápido a los conjuntos de datos.
 
@@ -176,7 +177,7 @@ Esto significa que solo una minoría de las series temporales tienen menos del 5
 
 :::
 
-# Resumen visual: Gráficos interactivos de series temporales
+# Análisis de ventas: Gráficos interactivos de series temporales {#sec-analisis}
 
 Se realizará una exploración visual para analizar varios gráficos de series temporales en diferentes niveles de agregación empleando funciones auxiliares: `cols_d` identifica las columnas cuyo nombre comienza con “d_”, `extract_ts` transforma el dataframe ancho en formato largo asignando a cada valor de ventas su fecha real a partir de `MIN_DATE` y normaliza los identificadores eliminando sufijos, `agg_wide` agrupa y suma las columnas de días según las dimensiones indicadas renombrando la última agrupación como `id`, y `set_monthly` utiliza estas transformaciones para agregar ventas por año y mes, conservar solo el primer día de cada periodo y descartar el último mes incompleto, dejando así listo el dataset para crear gráficos temporales interactivos.
 
@@ -458,3 +459,237 @@ Se observa lo siguiente:
 - `FOODS_3` concentra claramente la mayor parte de las ventas dentro de la categoría `FOODS` en todos los estados. `FOODS_2` muestra un ligero incremento hacia el final del período, especialmente en Wisconsin.
 
 - De manera similar, `HOUSEHOLD_1` supera con claridad a `HOUSEHOLD_2` en volumen de ventas. Por su parte, `HOBBIES_1` mantiene un nivel promedio de ventas superior al de `HOBBIES_2`, aunque en ambos casos no se aprecia un cambio significativo a lo largo del tiempo.
+
+# Análisis adicional: Calendario y precio de los productos {#sec-adicional}
+
+En esta sección se analizan en las dos variables adicionales proporcionadas: los precios de los productos y los eventos del calendario.
+
+## Calendario
+
+En la @sec-contenido se aprecia que el dataframe `calendar` incluye características básicas como día de la semana (columna `weekday` en formato de texto y `wday` en formato numérico), mes, año y, por supuesto, fecha. Junto a la fecha aparece también la columna `d`, que vincula cada fecha con los nombres de columna en los datos de entrenamiento.
+
+El resto de los atributos están relacionados con eventos y con cupones de asistencia alimentaria:
+
+- Al revisar la @sec-contenido, se observa que las columnas `event_name_2` y `event_type_2` solo tienen datos en cinco filas (el resto son valores ausentes). Por eso, este análisis se centrará únicamente en las columnas `event_name_1` y `event_type_1`.
+- El acrónimo SNAP corresponde a "Supplemental Nutrition Assistance Program" (programa federal de asistencia nutricional). Según su sitio web:
+
+  > "El programa SNAP es el mayor programa federal de asistencia nutricional. Proporciona beneficios a personas y familias de bajos ingresos mediante una tarjeta de transferencia electrónica de beneficios, que puede usarse como una tarjeta de débito para adquirir alimentos autorizados en establecimientos de venta al por menor."
+
+::: {.panel-tabset}
+
+### Días con eventos vs Sin eventos
+```{python}
+#| code-fold: true
+
+# días con eventos vs sin eventos
+events = (
+    calendar
+    .assign(event=lambda df: ~df['event_type_1'].isna())
+    .groupby('event')
+    .size()
+    .reset_index(name='count')
+)
+events['total'] = events['count'].sum()
+events['perc'] = events['count'] / events['total']
+
+fig = px.bar(
+    events,
+    x='event',
+    y='perc',
+    title='Días con eventos',
+    labels={'event': 'Evento', 'perc': 'Porcentaje'},
+    color='event'
+)
+fig.update_layout(template='plotly_white', showlegend=False)
+fig.update_xaxes(title=None)
+fig.update_yaxes(title=None, tickformat='.0%')
+fig.show()
+```
+
+### Tipos de eventos
+
+```{python}
+#| code-fold: true
+
+# tipos de eventos
+tps = (
+    calendar
+    .dropna(subset=['event_type_1'])
+    .groupby('event_type_1')
+    .size()
+    .reset_index(name='count')
+)
+tps['total'] = tps['count'].sum()
+tps['perc'] = tps['count'] / tps['total']
+
+label_map = {
+    'Religious': 'Religioso',
+    'National': 'Nacional',
+    'Cultural': 'Cultural',
+    'Sporting': 'Deportivo'
+}
+tps['event_type_1'] = tps['event_type_1'].map(label_map)
+
+fig = px.pie(
+    tps,
+    names='event_type_1',  
+    values='perc',         
+    title='Tipos de eventos',
+    hole=0,
+    labels={'event_type_1':'Evento','perc':'Porcentaje'}
+)
+fig.update_traces(
+    texttemplate='%{label}: %{percent:.0%}',
+    hovertemplate='%{label}: %{percent:.0%}'
+)
+fig.show()
+```
+
+### Días con SNAP por estado
+
+```{python}
+#| code-fold: true
+
+# días con SNAP por estado
+snap_cols = [col for col in calendar.columns if col.startswith('snap_')]
+
+snp = (
+    calendar
+    .melt(id_vars=['date'], value_vars=snap_cols, var_name='state', value_name='snap')
+    .assign(state=lambda df: df['state'].str[-2:])  
+    .assign(snap=lambda df: df['snap'].astype(bool))  
+    .groupby(['state', 'snap'])
+    .size()
+    .reset_index(name='count')
+)
+snp['total'] = snp.groupby('state')['count'].transform('sum')
+snp['perc'] = snp['count'] / snp['total']
+
+fig = px.bar(
+    snp,
+    x='snap',
+    y='perc',
+    facet_col='state',
+    facet_col_wrap=3,
+    color='snap',
+    title='Días con compras SNAP por estado',
+    labels={'snap': 'SNAP', 'perc': 'Porcentaje', 'state': 'Estado'}
+)
+fig.update_yaxes(title=None, tickformat='.0%')
+fig.update_xaxes(title=None)
+fig.update_traces(
+    hovertemplate='SNAP: %{x}<br>' + 'Porcentaje: %{y:.0%}<extra></extra>'
+)
+fig.update_layout(template='plotly_white', showlegend=False)
+fig.show()
+```
+:::
+
+Se encuentra lo siguiente:
+
+- En el calendario, alrededor del 8% de los días registra un evento especial. De esos días, aproximadamente un tercio corresponde a celebraciones religiosas y otro tercio a festividades nacionales; el tercio restante se divide en dos tercios de eventos culturales y un tercio de eventos deportivos.
+- El porcentaje de días en que las tiendas Walmart aceptan cupones SNAP es idéntico para California, Texas y Wisconsin: 650 días, lo que equivale al 33%.
+
+
+## Precio de los productos
+
+Se dispone de información detallada sobre los precios de los productos, incluyendo sus ID de categoría, departamento y tienda (que a su vez incluye el ID de estado). Los precios se presentan como promedios semanales, y la variable `wm_yr_wk` permite vincular cada semana con su fecha correspondiente a través de la columna de calendario del mismo nombre.
+
+Para analizar los precios promedio de los productos por categoría y departamento entre los años 2011 y 2016, se empleó el siguiente proceso:
+
+```{python}
+#| code-fold: true
+
+item_info = train[['item_id', 'cat_id', 'dept_id']].drop_duplicates()
+df = prices.merge(calendar[['wm_yr_wk', 'year']], on='wm_yr_wk', how='left')
+df = df.merge(item_info, on='item_id', how='left')
+
+df_group = (
+    df.groupby(['year', 'cat_id', 'dept_id'])['sell_price']
+    .mean()
+    .reset_index()
+)
+```
+
+::: {.panel-tabset}
+
+### Categoría: FOODS 
+
+```{python}
+#| code-fold: true
+
+foods = df_group[df_group['cat_id'] == 'FOODS']
+
+fig = px.line(
+    foods,
+    x='year',
+    y='sell_price',
+    color='dept_id',
+    markers=True,
+    title='Evolución del precio promedio',
+    labels={'sell_price': 'Precio promedio', 'year': 'Año', 'dept_id': 'Departamento'},
+    template='plotly_white'
+)
+
+fig.show()
+```
+
+### Categoría: HOBBIES
+
+```{python}
+#| code-fold: true
+
+hobbies = df_group[df_group['cat_id'] == 'HOBBIES']
+
+fig = px.line(
+    hobbies,
+    x='year',
+    y='sell_price',
+    color='dept_id',
+    markers=True,
+    title='Evolución del precio promedio',
+    labels={'sell_price': 'Precio promedio', 'year': 'Año', 'dept_id': 'Departamento'},
+    template='plotly_white'
+)
+
+fig.show()
+```
+
+### Categoría: HOUSEHOLD 
+
+```{python}
+#| code-fold: true
+
+household = df_group[df_group['cat_id'] == 'HOUSEHOLD']
+
+fig = px.line(
+    household,
+    x='year',
+    y='sell_price',
+    color='dept_id',
+    markers=True,
+    title='Evolución del precio promedio',
+    labels={'sell_price': 'Precio promedio', 'year': 'Año', 'dept_id': 'Departamento'},
+    template='plotly_white'
+)
+
+fig.show()
+```
+:::
+
+Se observa lo siguiente:
+
+En términos generales, los precios promedio se mantienen relativamente estables a lo largo de los años, con incrementos graduales que podrían atribuirse a la inflación.
+
+- En la categoría `FOODS`, se identifican las siguientes tendencias:
+  - En `FOODS_1`, el precio promedio fluctúa entre 3.3 y 3.4, mostrando estabilidad con leves variaciones a lo largo del período.
+  - En `FOODS_2`, se observa un aumento constante desde 3.8 en 2011 hasta 4.2 en 2016, reflejando una tendencia de alza clara.
+  - En `FOODS_3`, el precio permanece estable en 2.8 hasta 2013, con un ligero incremento a 2.9 hacia 2016.
+
+- En la categoría `HOBBIES`, se observan las siguientes dinámicas:
+  - En `HOBBIES_1`, el precio crece de manera sostenida desde 5.2 en 2011 hasta 6.6 en 2016, mostrando un incremento notable.
+  - En `HOBBIES_2`, el precio desciende de 2.8 hasta 2.5 a lo largo de todo el período, con una tendencia descendiente.
+
+- En la categoría `HOUSEHOLD`, se destacan los siguientes patrones:
+  - En `HOUSEHOLD_1`, el precio se mantiene en torno a 4.9 hasta 2013, con un aumento gradual a 5.1 en 2016.
+  - En `HOUSEHOLD_2`, el precio disminuye de 6.1 en 2011 a 5.7 en 2016, indicando una tendencia descendente leve pero constante.
